@@ -1,53 +1,80 @@
 "use client"
-import React, { useState } from 'react';
-import { Box, Button, Modal, IconButton, Grid, InputAdornment, TextField } from '@mui/material';
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  Box,
+  Button,
+  Modal,
+  IconButton,
+  Grid,
+  InputAdornment,
+  TextField,
+} from '@mui/material';
 import { Add as AddIcon, Close as CloseIcon } from '@mui/icons-material';
 import { FaInfoCircle } from 'react-icons/fa';
-import dynamic from 'next/dynamic';
-import DOMPurify from 'dompurify';
-import parse from 'html-react-parser';
-import 'react-quill/dist/quill.snow.css';
+import JoditEditor from 'jodit-react';
+import { styled } from '@mui/system';
+import axios from 'axios'; // Import axios for HTTP requests
+import { _create, _getAll } from '../../../utils/apiUtils'; // Import _get and _create functions from apiUtils
 
-const QuillEditor = dynamic(() => import('react-quill'), { ssr: false });
+// Custom styled component for heading styles
+const StyledHeading = styled('div')({
+  ' & h2, & h3, & h4, & h5, & h6': {
+    backgroundColor: 'blue',
+    color: 'white !important',
+    padding: '10px',
+    marginBottom: '10px',
+    borderRadius: '5px',
+  },
+});
 
-function JobsContent() {
+const StyledContent = styled('div')(({ theme }) => ({
+  '& table': {
+    width: '100%',
+    margin: '20px 0',
+    borderCollapse: 'collapse',
+    '& th, & td': {
+      border: '1px solid #ccc',
+      padding: '10px',
+    },
+  },
+  '& img': {
+    maxWidth: '100%',
+    height: 'auto',
+    margin: '20px 0',
+  },
+  '& p': {
+    margin: '10px 0',
+  },
+  // Specific table styling to override any inline styles
+  '& table.MsoTableGridLight, & table.MsoTableGrid': {
+    width: '100% !important',
+    margin: '20px 0 !important',
+    '& th, & td': {
+      border: '1px solid #ccc !important',
+      padding: '10px !important',
+    },
+  },
+}));
+
+const JobsContent = () => {
   const [openModal, setOpenModal] = useState(false);
-  const [formData, setFormData] = useState({});
-  const [jsonData, setJsonData] = useState(null); // State to store JSON data for display
+  const [formData, setFormData] = useState({ title: '', content: '', created_by: 'Anonymous' }); // Initialize created_by with default value
+  const [jobs, setJobs] = useState([]);
+  const editor = useRef(null);
 
-  const inputFields = [
-    { name: 'title', label: 'Title', type: 'text', icon: <FaInfoCircle /> },
-    { name: 'content', label: 'Content', type: 'editor' },
-  ];
+  useEffect(() => {
+    fetchJobs(); // Load jobs on component mount
+  }, []);
 
-  const quillModules = {
-    toolbar: [
-      [{ header: [1, 2, 3, false] }],
-      ['bold', 'italic', 'underline', 'strike', 'blockquote'],
-      [{ list: 'ordered' }, { list: 'bullet' }],
-      ['link', 'image'],
-      [{ align: [] }],
-      [{ color: [] }],
-      ['code-block'],
-      ['clean'],
-    ],
+  const fetchJobs = async () => {
+    try {
+      const jobsData = await _getAll('/api/job-posts'); // Fetch jobs using _get function
+      setJobs(jobsData); // Set jobs from API response
+    } catch (error) {
+      console.error('Error fetching jobs:', error);
+      // Handle error as needed
+    }
   };
-
-  const quillFormats = [
-    'header',
-    'bold',
-    'italic',
-    'underline',
-    'strike',
-    'blockquote',
-    'list',
-    'bullet',
-    'link',
-    'image',
-    'align',
-    'color',
-    'code-block',
-  ];
 
   const handleOpenModal = () => {
     setOpenModal(true);
@@ -62,63 +89,90 @@ function JobsContent() {
     setFormData({ ...formData, [name]: value });
   };
 
-  const handleEditorChange = (name, value) => {
-    setFormData({ ...formData, [name]: value });
+  const handleSubmit = async () => {
+    try {
+      const newJob = {
+        title: formData.title,
+        content: formData.content,
+        created_by: formData.created_by, // Include created_by in newJob object
+      };
+
+      // Call _create function to post job data
+      const response = await _create('/api/job-posts', newJob); // Adjust endpoint as per your API
+
+      // Update jobs state with new job
+      setJobs([...jobs, response]);
+      handleCloseModal();
+    } catch (error) {
+      console.error('Error submitting job:', error);
+      // Handle error as needed
+    }
   };
 
-  const handleSubmit = () => {
-    // Sanitize the HTML content
-    const sanitizedHTML = DOMPurify.sanitize(formData.content || '');
-    
-    // Create JSON data
-    const jsonData = {
-      title: formData.title || '',
-      content: sanitizedHTML,
-    };
-
-    // Store JSON data in local storage
-    localStorage.setItem('jobFormData', JSON.stringify(jsonData));
-
-    // Update state to display JSON data
-    setJsonData(jsonData);
-    console.log(jsonData)
-
-    // Close the modal
-    handleCloseModal();
-  };
-
-  const renderInputFields = () => {
-    return inputFields.map((field, index) => (
-      <Grid item xs={12} key={index}>
-        {field.type === 'text' ? (
-          <TextField
-            fullWidth
-            name={field.name}
-            label={field.label}
-            type={field.type}
-            value={formData[field.name] || ''}
-            onChange={handleChange}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  {field.icon}
-                </InputAdornment>
-              ),
-            }}
-          />
-        ) : field.type === 'editor' ? (
-          <div style={{ width: '100%', height: '400px' }}>
-            <QuillEditor
-              value={formData[field.name] || ''}
-              onChange={(value) => handleEditorChange(field.name, value)}
-              modules={quillModules}
-              formats={quillFormats}
-              style={{ height: '90%' }}
-            />
-          </div>
-        ) : null}
+  const renderInputFields = () => (
+    <>
+      <Grid item xs={12}>
+        <TextField
+          fullWidth
+          name="title"
+          label="Title"
+          type="text"
+          value={formData.title}
+          onChange={handleChange}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <FaInfoCircle />
+              </InputAdornment>
+            ),
+          }}
+        />
       </Grid>
-    ));
+      <Grid item xs={12}>
+        <JoditEditor
+          ref={editor}
+          value={formData.content}
+          onChange={(newContent) => setFormData({ ...formData, content: newContent })}
+          style={{
+            minHeight: '300px',
+            maxHeight: '800px',
+            width: '100%',
+            border: '1px solid #ccc',
+            padding: '10px',
+            boxSizing: 'border-box',
+          }}
+        />
+      </Grid>
+      {/* Include created_by field */}
+      <Grid item xs={12}>
+        <TextField
+          fullWidth
+          name="created_by"
+          label="Created By"
+          type="text"
+          value={formData.created_by}
+          onChange={handleChange}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <FaInfoCircle />
+              </InputAdornment>
+            ),
+          }}
+        />
+      </Grid>
+    </>
+  );
+
+  const renderHTMLContent = (htmlContent) => {
+    // This function can parse the HTML content and wrap it with StyledContent component
+    return (
+      <StyledHeading>
+        <StyledContent>
+          <div dangerouslySetInnerHTML={{ __html: htmlContent }} />
+        </StyledContent>
+      </StyledHeading>
+    );
   };
 
   return (
@@ -138,22 +192,20 @@ function JobsContent() {
         <Box
           sx={{
             position: 'absolute',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)', // Center the modal vertically and horizontally
+            top: 0,
+            left: 0,
+            height: '100vh',
+            width: '100vw',
             bgcolor: 'background.paper',
             boxShadow: 24,
             p: 4,
-            width: { xs: '95%', sm: '90%', md: '80%' }, // Responsive width
-            height: { xs: '95%', sm: '85%', md: '80%' }, // Responsive height
-            maxHeight: '90%',
             overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
           }}
         >
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Box>
-              <h2 id="modal-title">Add Jobs</h2>
-            </Box>
+          <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h2 id="modal-title">Add Jobs</h2>
             <IconButton onClick={handleCloseModal}>
               <CloseIcon />
             </IconButton>
@@ -170,17 +222,16 @@ function JobsContent() {
           </Box>
         </Box>
       </Modal>
-      {/* Display Title and Content */}
-      {jsonData && (
-        <Box mt={4}>
-          <h2>Entered Title:</h2>
-          <div>{jsonData.title}</div>
-          <h2>Entered Content:</h2>
-          <div>{parse(DOMPurify.sanitize(jsonData.content || ''))}</div>
-        </Box>
-      )}
+      <Grid container spacing={2}>
+        {jobs.map((job, index) => (
+          <Grid item xs={12} key={index}>
+            <h2>{job.title}</h2>
+            {renderHTMLContent(job.content)}
+          </Grid>
+        ))}
+      </Grid>
     </div>
   );
-}
+};
 
 export default JobsContent;
