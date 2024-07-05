@@ -226,7 +226,7 @@ const JobsContent = () => {
         {jobs.map((job, index) => (
           <Grid item xs={12} key={index}>
             <h2>{job.title}</h2>
-            {renderHTMLContent(job.content)}
+            {renderHTMLContent(job.content)} 
           </Grid>
         ))}
       </Grid>
